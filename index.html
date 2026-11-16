@@ -1,0 +1,113 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1f2937"><link rel="manifest" href="manifest.json"><link rel="icon" href="icon.svg">
+<title>Refaccionaria</title>
+<style>
+:root{--bg:#f3f4f6;--c:#fff;--t:#111827;--m:#6b7280;--p:#1d4ed8;--b:#e5e7eb;--w:#b91c1c;--ok:#15803d}
+@media(prefers-color-scheme:dark){:root{--bg:#0f1115;--c:#1a1d24;--t:#f3f4f6;--m:#9ca3af;--p:#3b82f6;--b:#2a2f3a;--w:#f87171;--ok:#4ade80}}
+*{box-sizing:border-box}html,body{margin:0}body{font:16px system-ui,sans-serif;background:var(--bg);color:var(--t);padding:env(safe-area-inset-top) 0 calc(72px + env(safe-area-inset-bottom))}
+#v,#a{padding:12px;max-width:720px;margin:auto}h2{margin:8px 0}.m,small{color:var(--m)}.w{color:var(--w)}.ok{color:var(--ok)}.r{text-align:right}
+.card{background:var(--c);border:1px solid var(--b);border-radius:12px;padding:12px;margin:8px 0}.row{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:8px}.g .card{margin:0}.big{font-size:22px;font-weight:700}
+input,select,textarea{width:100%;padding:13px;margin:4px 0;border:1px solid var(--b);border-radius:10px;background:var(--c);color:var(--t);font:inherit}
+input[type=checkbox]{width:22px;height:22px;margin:0 8px 0 0}label{display:flex;align-items:center;margin:8px 0}
+.btn,.b2{min-height:50px;border:0;border-radius:12px;background:var(--p);color:#fff;font:600 17px system-ui;width:100%;margin:6px 0}.btn:disabled{opacity:.5}
+.b2{background:var(--c);color:var(--t);border:1px solid var(--b);width:56px;margin:4px 0 4px 8px;font-size:22px}.dg{background:var(--w)}
+.bar{display:flex}.seg{display:flex;gap:8px}.seg button{flex:1;min-height:46px;border-radius:10px;border:1px solid var(--b);background:var(--c);color:var(--t);font:600 16px system-ui}.seg .on{background:var(--p);color:#fff}
+.st{display:flex;align-items:center;gap:6px}.st button{width:42px;height:42px;border-radius:10px;border:1px solid var(--b);background:var(--c);color:var(--t);font-size:20px}
+nav{position:fixed;bottom:0;left:0;right:0;display:flex;background:var(--c);border-top:1px solid var(--b);padding-bottom:env(safe-area-inset-bottom)}
+nav button{flex:1;border:0;background:none;color:var(--m);font:11px system-ui;padding:8px 0;min-height:58px}nav button span{display:block;font-size:21px}nav .on{color:var(--p);font-weight:700}
+#mo{position:fixed;inset:0;background:var(--bg);overflow:auto;padding:12px calc(12px) 40px;display:none;z-index:5;padding-top:calc(12px + env(safe-area-inset-top))}
+#t{position:fixed;left:12px;right:12px;top:calc(10px + env(safe-area-inset-top));background:#15803d;color:#fff;padding:14px;border-radius:12px;z-index:9;display:none}#t.e{background:#b91c1c}#t.show{display:block}
+video{width:100%;border-radius:12px;background:#000}
+</style></head><body>
+<div id="t"></div><div id="a"></div><div id="v"></div><div id="mo"></div><nav id="nav"></nav>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.49.4/dist/umd/supabase.min.js"></script>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),
+money=n=>'$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2}),
+fh=d=>new Date(d).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}),
+cc=m=>(Array.isArray(m.mov_costos)?m.mov_costos[0]?.costo_unit:m.mov_costos?.costo_unit)||0;
+let cfg=JSON.parse(localStorage.cfg||'null'),sb,me,adm=false,tab='inicio',prods=[],costos={},nm={},fq='',ct=[],ck=crypto.randomUUID(),cm='',tp='venta',busy=0,cx='';
+const T=[['inicio','🏠','Inicio'],['inv','📦','Inventario'],['venta','🛒','Vender'],['compra','🧾','Compras'],['mov','🔁','Movim.'],['rep','📊','Reportes'],['cfg','⚙️','Ajustes']];
+async function q(p){const{data,error}=await p;if(error)throw error;return data}
+function toast(m,e){const t=$('#t');t.textContent=m;t.className=e?'e show':'show';clearTimeout(t.h);t.h=setTimeout(()=>t.className='',3800)}
+function nav(){$('#nav').innerHTML=T.filter(t=>adm||!['compra','rep'].includes(t[0])).map(t=>`<button class="${t[0]==tab?'on':''}" onclick="go('${t[0]}')"><span>${t[1]}</span>${t[2]}</button>`).join('')}
+async function load(){prods=await q(sb.from('productos').select('*').order('nombre'));
+ if(adm){const c=await q(sb.from('costos').select('*'));costos={};c.forEach(x=>costos[x.producto_id]=+x.costo);(await q(sb.from('perfiles').select('*'))).forEach(p=>nm[p.id]=p)}}
+async function go(t){tab=t;nav();$('#v').innerHTML='<p class="m">Cargando…</p>';try{await load();await V[t]()}catch(e){toast(e.message,1)}}
+function init(){
+ if(!cfg){$('#a').innerHTML=`<h2>Conectar</h2><p class="m">Pega los datos de tu proyecto Supabase (solo una vez).</p><input id="u" placeholder="Project URL (https://...supabase.co)"><input id="k" placeholder="Llave pública (anon o publishable)"><button class="btn" onclick="localStorage.cfg=JSON.stringify({u:$('#u').value.trim(),k:$('#k').value.trim()});location.reload()">Guardar</button>`;return}
+ sb=supabase.createClient(cfg.u,cfg.k);sb.auth.getSession().then(({data})=>data.session?start():login())}
+function login(){$('#v').innerHTML='';$('#nav').innerHTML='';$('#a').innerHTML=`<h2>Refaccionaria</h2><input id="e" type="email" placeholder="Correo" autocomplete="username"><input id="p" type="password" placeholder="Contraseña" autocomplete="current-password"><button class="btn" onclick="ent()">Entrar</button>`}
+async function ent(){const{error}=await sb.auth.signInWithPassword({email:$('#e').value.trim(),password:$('#p').value});error?toast('Correo o contraseña incorrectos',1):start()}
+async function start(){try{const u=(await sb.auth.getUser()).data.user;me=await q(sb.from('perfiles').select('*').eq('id',u.id).single());
+ if(!me.activo){await sb.auth.signOut();return toast('Usuario desactivado',1)}
+ adm=me.rol=='admin';$('#a').innerHTML='';go('inicio')}catch(e){toast(e.message,1)}}
+const V={};
+V.inicio=async()=>{const h=new Date();h.setHours(0,0,0,0);
+ const d=await q(sb.from('movimientos').select('*,mov_costos(costo_unit),productos(nombre)').gte('fecha',h.toISOString()).order('id',{ascending:false}));
+ let vt=0,ut=0;d.filter(m=>m.tipo=='venta'||m.tipo=='taller').forEach(m=>{const n=-m.cantidad;vt+=n*m.precio_unit;ut+=n*(m.precio_unit-cc(m))});
+ const act=prods.filter(p=>p.activo),low=act.filter(p=>p.existencia<=p.stock_min),inv=act.reduce((s,p)=>s+p.existencia*(costos[p.id]||0),0);
+ $('#v').innerHTML=`<h2>Inicio</h2><div class="g"><div class="card"><small>Productos</small><div class="big">${act.length}</div></div><div class="card"><small>Ventas de hoy</small><div class="big">${money(vt)}</div></div>${adm?`<div class="card"><small>Inventario a costo</small><div class="big">${money(inv)}</div></div><div class="card"><small>Utilidad de hoy</small><div class="big ok">${money(ut)}</div></div>`:''}</div>
+ <h2>Stock bajo (${low.length})</h2>${low.slice(0,10).map(p=>`<div class="card row"><span>${esc(p.nombre)}</span><b class="w">${p.existencia}</b></div>`).join('')||'<p class="m">Todo en orden</p>'}
+ <h2>Últimos movimientos</h2>${d.slice(0,8).map(mv).join('')||'<p class="m">Sin movimientos hoy</p>'}`};
+const TL={entrada:'Entrada',venta:'Venta',taller:'Taller',ajuste:'Ajuste',devolucion:'Devolución'};
+const mv=m=>`<div class="card row"><div><b>${esc(m.productos?.nombre)}</b><br><small>${TL[m.tipo]} · ${fh(m.fecha)} · ${esc(m.folio||'')}<br>${esc(nm[m.usuario_id]?.nombre||(m.usuario_id==me.id?me.nombre:'Otro usuario'))}${m.nota?' · '+esc(m.nota):''}</small></div><b class="${m.cantidad<0?'w':'ok'}">${m.cantidad>0?'+':''}${m.cantidad}</b></div>`;
+V.mov=async()=>{const d=await q(sb.from('movimientos').select('*,productos(nombre)').order('id',{ascending:false}).limit(100));$('#v').innerHTML='<h2>Movimientos</h2>'+d.map(mv).join('')};
+const ma=p=>{const s=fq.toLowerCase();return !s||[p.nombre,p.codigo,p.codigo_barras,p.categoria,p.descripcion].some(x=>(x||'').toLowerCase().includes(s))};
+V.inv=async()=>{$('#v').innerHTML=`<div class="bar"><input id="sq" placeholder="Buscar nombre o código" value="${esc(fq)}" oninput="fq=this.value;lst()"><button class="b2" onclick="scan(c=>{fq=c;$('#sq').value=c;lst()})">📷</button></div>${adm?'<button class="btn" onclick="edit()">+ Nuevo producto</button>':''}<div id="l"></div>`;lst()};
+function lst(){$('#l').innerHTML=prods.filter(p=>(adm||p.activo)&&ma(p)).slice(0,80).map(p=>`<div class="card row" onclick="edit(${p.id})"><div><b>${esc(p.nombre)}</b>${p.revisar?' ⚠️':''}${p.activo?'':' (inactivo)'}<br><small>${p.codigo} · ${esc(p.categoria||'')}</small></div><div class="r"><b class="${p.existencia<=p.stock_min?'w':''}">${p.existencia} pz</b><br><small>${p.precio_venta==null?'sin precio':money(p.precio_venta)}</small></div></div>`).join('')||'<p class="m">Sin resultados</p>'}
+function edit(id){const p=prods.find(x=>x.id==id)||{activo:true,existencia:0,stock_min:1},R=adm?'':'disabled',
+ f=(k,l,v,t='text')=>`<small>${l}</small><input id="f_${k}" type="${t}" ${t=='number'?'step="any" inputmode="decimal"':''} value="${esc(v)}" ${R}>`;
+ $('#mo').style.display='block';$('#mo').innerHTML=`<h2>${p.codigo||'Nuevo producto'}</h2><p>Existencia: <b>${p.existencia}</b></p>${f('nombre','Nombre',p.nombre)}${f('cb','Código de barras',p.codigo_barras)}${f('categoria','Categoría',p.categoria)}${f('marca','Marca',p.marca)}${f('descripcion','Descripción',p.descripcion)}${f('pv','Precio de venta',p.precio_venta,'number')}${adm?f('costo','Costo de compra',costos[p.id],'number'):''}${f('sm','Stock mínimo',p.stock_min,'number')}${f('proveedor','Proveedor',p.proveedor)}${f('ubicacion','Ubicación',p.ubicacion)}${f('nota','Nota',p.nota)}
+ ${adm?`<label><input type="checkbox" id="f_act" ${p.activo?'checked':''}>Activo</label><label><input type="checkbox" id="f_rev" ${p.revisar?'checked':''}>Marcado para revisar</label><button class="btn" onclick="save(${id||0})">Guardar</button>${id?`<button class="btn" style="background:#475569" onclick="ajustar(${id},'ajuste')">Ajustar existencia</button><button class="btn" style="background:#475569" onclick="ajustar(${id},'devolucion')">Registrar devolución</button><button class="btn" style="background:#475569" onclick="hist(${id})">Ver historial</button>`:''}`:`<button class="btn" onclick="hist(${id})">Ver historial</button>`}<button class="btn" style="background:#6b7280" onclick="cl()">Cerrar</button>`}
+const cl=()=>$('#mo').style.display='none';
+async function hist(id){const d=await q(sb.from('movimientos').select('*,productos(nombre)').eq('producto_id',id).order('id',{ascending:false}).limit(50));$('#mo').innerHTML='<h2>Historial</h2>'+(d.map(mv).join('')||'<p class="m">Sin movimientos</p>')+'<button class="btn" onclick="cl()">Cerrar</button>'}
+async function save(id){const f=k=>$('#f_'+k).value.trim();if(!f('nombre'))return toast('Falta el nombre',1);
+ const row={nombre:f('nombre'),codigo_barras:f('cb')||null,categoria:f('categoria')||null,marca:f('marca')||null,descripcion:f('descripcion')||null,precio_venta:f('pv')===''?null:+f('pv'),stock_min:+f('sm')||0,proveedor:f('proveedor')||null,ubicacion:f('ubicacion')||null,nota:f('nota')||null,activo:$('#f_act').checked,revisar:$('#f_rev').checked};
+ try{let pid=id;if(id)await q(sb.from('productos').update(row).eq('id',id));else{row.codigo='REF'+String(Math.max(0,...prods.map(p=>+p.codigo.slice(3)||0))+1).padStart(5,'0');pid=(await q(sb.from('productos').insert(row).select('id').single())).id}
+ if(f('costo')!=='')await q(sb.from('costos').upsert({producto_id:pid,costo:+f('costo')}));toast('Guardado');cl();go('inv')}catch(e){toast(e.message,1)}}
+async function ajustar(id,tipo){const d=parseInt(prompt(tipo=='devolucion'?'Piezas devueltas por el cliente':'Piezas a sumar (+) o restar (-)'));if(!d)return;const n=prompt('Motivo (obligatorio)');if(!n)return;
+ try{await q(sb.rpc('registrar_ajuste',{p_clave:crypto.randomUUID(),p_id:id,p_delta:tipo=='devolucion'?Math.abs(d):d,p_tipo:tipo,p_nota:n}));toast('Listo');cl();go('inv')}catch(e){toast(e.message,1)}}
+let st;async function scan(cb){if(!('BarcodeDetector' in window))return toast('Este navegador no puede escanear; usa Chrome',1);
+ $('#mo').style.display='block';$('#mo').innerHTML='<h2>Escaneando…</h2><video id="vd" playsinline muted></video><button class="btn" style="background:#6b7280" onclick="stop()">Cancelar</button>';
+ try{st=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});const v=$('#vd');v.srcObject=st;await v.play();const bd=new BarcodeDetector();
+ const tk=async()=>{if(!st)return;try{const r=await bd.detect(v);if(r.length){const c=r[0].rawValue;stop();return cb(c)}}catch(e){}setTimeout(tk,250)};tk()}catch(e){stop();toast('No se pudo abrir la cámara',1)}}
+function stop(){st&&st.getTracks().forEach(t=>t.stop());st=null;cl()}
+const pm=id=>prods.find(p=>p.id==id);
+function cv(m){if(cm!=m){ct=[];cm=m;ck=crypto.randomUUID();cx=''}
+ $('#v').innerHTML=`<h2>${m=='venta'?'Nueva venta':'Registrar compra'}</h2>${m=='venta'?`<div class="seg"><button id="s1" onclick="tp='venta';cr()">Venta</button><button id="s2" onclick="tp='taller';cr()">Uso en taller</button></div>`:`<input id="cpv" placeholder="Proveedor"><input id="crf" placeholder="Folio de factura o ticket (solo referencia)">`}<div class="bar"><input id="cs" placeholder="Buscar o escanear producto" value="${esc(cx)}" oninput="cx=this.value;cr()"><button class="b2" onclick="scan(sc)">📷</button></div><div id="cd"></div>`;cr()}
+V.venta=()=>cv('venta');V.compra=()=>cv('compra');
+function sc(c){const p=prods.find(x=>x.activo&&(x.codigo_barras==c||x.codigo==c));if(p)add(p.id);else{cx=c;$('#cs').value=c;cr();toast('No hay un producto con ese código',1)}}
+function add(id){const i=ct.find(x=>x.id==id);i?i.cant++:ct.push({id,cant:1,costo:costos[id]??''});cx='';$('#cs').value='';ck=crypto.randomUUID();cr()}
+function ch(id,d){const i=ct.find(x=>x.id==id);i.cant+=d;if(i.cant<1)ct=ct.filter(x=>x!=i);ck=crypto.randomUUID();cr()}
+function cr(){const v=cm=='venta';if(v){$('#s1').className=tp=='venta'?'on':'';$('#s2').className=tp=='taller'?'on':''}
+ const rs=cx?prods.filter(p=>p.activo&&ma2(p)).slice(0,6):[];let tot=0;
+ $('#cd').innerHTML=rs.map(p=>`<div class="card row" onclick="add(${p.id})"><span>${esc(p.nombre)}<br><small>${p.existencia} pz</small></span><b>${v?money(p.precio_venta):'+'}</b></div>`).join('')+
+ ct.map(i=>{const p=pm(i.id);tot+=i.cant*(v?p.precio_venta||0:+i.costo||0);return`<div class="card"><div class="row"><b>${esc(p.nombre)}</b><span>${v?money(p.precio_venta):''}</span></div><div class="row"><div class="st"><button onclick="ch(${i.id},-1)">−</button><b>${i.cant}</b><button onclick="ch(${i.id},1)">+</button></div>${v?`<small>Existencia ${p.existencia}</small>`:`<input style="width:120px" type="number" inputmode="decimal" placeholder="Costo" value="${i.costo}" oninput="pm2(${i.id},this.value)">`}</div></div>`}).join('')+
+ `<div class="card row"><b>Total</b><span class="big">${money(tot)}</span></div><button class="btn" ${busy||!ct.length?'disabled':''} onclick="ok()">${busy?'Guardando…':v?'Confirmar venta':'Registrar compra'}</button>`}
+const ma2=p=>{const s=cx.toLowerCase();return [p.nombre,p.codigo,p.codigo_barras].some(x=>(x||'').toLowerCase().includes(s))};
+function pm2(id,v){ct.find(x=>x.id==id).costo=v}
+async function ok(){if(busy||!ct.length)return;busy=1;cr();
+ try{let f;if(cm=='venta'){for(const i of ct){const p=pm(i.id);if(p.precio_venta==null)throw Error('Sin precio: '+p.nombre);if(i.cant>p.existencia)throw Error('Existencias insuficientes: '+p.nombre)}
+  f=await q(sb.rpc('registrar_venta',{p_clave:ck,p_tipo:tp,p_items:ct.map(i=>({id:i.id,cant:i.cant})),p_nota:null}))}
+ else{if(ct.some(i=>i.costo===''||+i.costo<0))throw Error('Falta el costo de un producto');
+  f=await q(sb.rpc('registrar_compra',{p_clave:ck,p_proveedor:$('#cpv').value.trim()||null,p_ref:$('#crf').value.trim()||null,p_items:ct.map(i=>({id:i.id,cant:i.cant,costo:+i.costo}))}))}
+ toast('Guardado · folio '+f);ct=[];ck=crypto.randomUUID();await load();if(cm=='compra'){$('#cpv').value='';$('#crf').value=''}}catch(e){toast(e.message,1)}busy=0;cr()}
+V.rep=async()=>{$('#v').innerHTML='<h2>Reportes</h2><div class="seg"><button onclick="rp(1)">Hoy</button><button onclick="rp(7)">7 días</button><button onclick="rp(30)">30 días</button></div><div id="rr"></div>';rp(1)};
+async function rp(n){const h=new Date();h.setHours(0,0,0,0);h.setDate(h.getDate()-n+1);
+ const d=(await q(sb.from('movimientos').select('*,mov_costos(costo_unit),productos(nombre)').gte('fecha',h.toISOString()).in('tipo',['venta','taller']).limit(1000)));
+ let v=0,c=0,u={},f=new Set;d.forEach(m=>{const k=-m.cantidad;v+=k*m.precio_unit;c+=k*cc(m);f.add(m.folio);u[m.productos.nombre]=(u[m.productos.nombre]||0)+k});
+ const top=Object.entries(u).sort((a,b)=>b[1]-a[1]).slice(0,8);
+ $('#rr').innerHTML=`<div class="g" style="margin-top:8px"><div class="card"><small>Ventas</small><div class="big">${money(v)}</div></div><div class="card"><small>Costo</small><div class="big">${money(c)}</div></div><div class="card"><small>Utilidad bruta</small><div class="big ok">${money(v-c)}</div></div><div class="card"><small>Margen · Operaciones</small><div class="big">${v?Math.round((v-c)/v*100):0}% · ${f.size}</div></div></div><h2>Más vendidos</h2>${top.map(t=>`<div class="card row"><span>${esc(t[0])}</span><b>${t[1]} pz</b></div>`).join('')||'<p class="m">Sin ventas</p>'}`}
+V.cfg=async()=>{const us=adm?Object.values(nm):[];$('#v').innerHTML=`<h2>Ajustes</h2><div class="card"><b>${esc(me.nombre)}</b><br><small>${adm?'Administrador':'Vendedor'}</small></div>
+ ${adm?`<h2>Usuarios</h2>${us.map(u=>`<div class="card row"><span>${esc(u.nombre)}<br><small>${u.rol}</small></span>${u.id==me.id?'':`<button class="b2" style="width:auto;padding:0 14px;font-size:15px" onclick="act('${u.id}',${!u.activo})">${u.activo?'Desactivar':'Activar'}</button>`}</div>`).join('')}<small class="m">Los usuarios nuevos se crean en Supabase.</small><button class="btn" onclick="backup()">Descargar respaldo</button>`:''}
+ <button class="btn" style="background:#475569" onclick="localStorage.removeItem('cfg');location.reload()">Cambiar conexión</button><button class="btn dg" onclick="sb.auth.signOut().then(()=>location.reload())">Cerrar sesión</button>`};
+async function act(id,a){try{await q(sb.from('perfiles').update({activo:a}).eq('id',id));go('cfg')}catch(e){toast(e.message,1)}}
+async function all(t,k){let r=[],i=0;for(;;){const d=await q(sb.from(t).select('*').order(k).range(i,i+999));r=r.concat(d);if(d.length<1000)return r;i+=1000}}
+async function backup(){try{const o={fecha:new Date().toISOString()};for(const[t,k]of[['productos','id'],['costos','producto_id'],['operaciones','folio'],['movimientos','id'],['mov_costos','movimiento_id']])o[t]=await all(t,k);
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(o)],{type:'application/json'}));a.download='respaldo-'+o.fecha.slice(0,10)+'.json';a.click();toast('Respaldo descargado')}catch(e){toast(e.message,1)}}
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+init();
+</script></body></html>
